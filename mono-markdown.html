@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title>在线Markdown编辑器 - 实时预览 | AI驱动 | 锐道咨询</title>
+    <meta name="description" content="锐道咨询出品的一款强大、免费的在线Markdown编辑器。支持实时预览、代码高亮、数学公式(KaTeX)、流程图(Mermaid)和PDF导出。为AI协作与技术文档写作优化，内容本地保存，安全无忧。">
+    <meta name="keywords" content="Markdown编辑器, 在线Markdown, Markdown实时预览, Markdown转PDF, 代码高亮, 数学公式, 流程图, Mermaid, KaTeX, AI写作, 技术文档, 免费工具, 锐道咨询">
+    <meta name="author" content="锐道咨询">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/4.3.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.8.1/mermaid.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.4/katex.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.4/katex.min.css">
+    
+    <link id="hljs-theme" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        /* --- 核心样式与主题 --- */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-color: #ffffff; --text-color: #333333; --border-color: #e0e0e0;
+            --editor-bg: #fafafa; --preview-bg: #ffffff; --button-bg: #f5f5f5;
+            --button-hover: #e0e0e0; --accent-color: #4CAF50; --shadow: 0 2px 4px rgba(0,0,0,0.1);
+            --mark-bg: #fff1a7; --scrollbar-thumb: #c1c1c1; --scrollbar-track: #f1f1f1;
+            --error-bg: #f2dede; --error-text: #a94442; --error-border: #d9534f;
+        }
+
+        .dark {
+            --bg-color: #1a1a1a; --text-color: #e0e0e0; --border-color: #404040;
+            --editor-bg: #2d2d2d; --preview-bg: #1e1e1e; --button-bg: #3a3a3a;
+            --button-hover: #4a4a4a; --accent-color: #66BB6A; --shadow: 0 2px 4px rgba(0,0,0,0.3);
+            --mark-bg: #695d00; --scrollbar-thumb: #555; --scrollbar-track: #333;
+            --error-bg: #2d2020; --error-text: #ff8a80; --error-border: #ff5252;
+        }
+
+        /* --- 基础布局 --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-color); color: var(--text-color); height: 100vh;
+            overflow: hidden; transition: background-color 0.3s ease, color 0.3s ease; display: flex; flex-direction: column;
+        }
+        .container { width: 100%; flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* --- 工具栏 --- */
+        .toolbar {
+            background: var(--button-bg); border-bottom: 1px solid var(--border-color);
+            padding: 8px 16px; display: flex; justify-content: space-between;
+            align-items: center; box-shadow: var(--shadow); z-index: 10; flex-shrink: 0;
+        }
+        .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .btn {
+            background: var(--button-bg); border: 1px solid var(--border-color); color: var(--text-color);
+            width: 36px; height: 36px; border-radius: 4px; cursor: pointer; font-size: 16px;
+            transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; position: relative;
+        }
+        .btn i { font-size: 1em; line-height: 1; }
+        .btn.danger { color: #f44336; }
+        .btn:hover { background: var(--button-hover); transform: translateY(-1px); }
+        .btn::after {
+            content: attr(aria-label); position: absolute; bottom: -30px; left: 50%;
+            transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white;
+            padding: 4px 8px; border-radius: 4px; font-size: 12px; white-space: nowrap;
+            z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.2s ease, visibility 0.2s ease;
+        }
+        .btn:hover::after { opacity: 1; visibility: visible; }
+        .btn.active { background: var(--accent-color); color: white; border-color: var(--accent-color); }
+
+        /* --- 主内容区 --- */
+        .main-content { flex: 1; display: flex; overflow: hidden; }
+        .editor-panel {
+            flex: 1; background: var(--editor-bg); border-right: 1px solid var(--border-color);
+            transition: flex 0.3s ease, width 0.3s ease, opacity 0.3s ease;
+            position: relative; /* 用于定位查找替换面板 */
+        }
+        .preview-panel { flex: 1; background: var(--preview-bg); overflow-y: auto; }
+        
+        /* 自定义滚动条 */
+        .editor::-webkit-scrollbar, .preview-panel::-webkit-scrollbar { width: 8px; }
+        .editor::-webkit-scrollbar-track, .preview-panel::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+        .editor::-webkit-scrollbar-thumb, .preview-panel::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+        .editor::-webkit-scrollbar-thumb:hover, .preview-panel::-webkit-scrollbar-thumb:hover { background: #888; }
+
+        .editor-panel.hidden, .preview-panel.hidden {
+            flex: 0; width: 0; padding: 0; border: none; overflow: hidden; opacity: 0;
+        }
+
+        /* 编辑器textarea样式 */
+        .editor {
+            width: 100%; height: 100%; border: none; background: transparent; color: var(--text-color);
+            font-family: 'Menlo', 'Consolas', 'Courier New', monospace; font-size: 14px;
+            line-height: 1.6; padding: 20px; resize: none; outline: none;
+            overflow-y: auto; /* 滚动条修复：让textarea自身滚动 */
+        }
+        .preview { padding: 20px; min-height: 100%; }
+
+        /* --- 查找与替换面板 --- */
+        .find-replace-panel {
+            position: absolute; top: 10px; right: 10px; background: var(--editor-bg);
+            border: 1px solid var(--border-color); border-radius: 6px; box-shadow: var(--shadow);
+            z-index: 20; padding: 10px; display: flex; flex-direction: column; gap: 10px;
+            width: 320px; transition: opacity 0.2s, transform 0.2s;
+        }
+        .find-replace-panel.hidden {
+            opacity: 0; visibility: hidden; transform: translateY(-10px); pointer-events: none;
+        }
+        .find-replace-panel div { display: flex; gap: 8px; }
+        .find-replace-panel input[type="text"] {
+            flex-grow: 1; border: 1px solid var(--border-color); background: var(--bg-color);
+            color: var(--text-color); padding: 6px 8px; border-radius: 4px; outline: none;
+            font-size: 13px;
+        }
+        .find-replace-panel input[type="text"]:focus { border-color: var(--accent-color); }
+        .find-replace-panel button {
+            background: var(--button-bg); border: 1px solid var(--border-color); color: var(--text-color);
+            padding: 6px 10px; border-radius: 4px; cursor: pointer; font-size: 13px;
+            transition: background-color 0.2s;
+        }
+        .find-replace-panel button:hover { background: var(--button-hover); }
+        .find-replace-panel .close-btn {
+            position: absolute; top: 5px; right: 8px; background: transparent; border: none;
+            font-size: 20px; cursor: pointer; color: var(--text-color); opacity: 0.6;
+        }
+        .find-replace-panel .close-btn:hover { opacity: 1; }
+
+        /* --- Markdown元素样式 --- */
+        .preview h1, .preview h2, .preview h3, .preview h4, .preview h5, .preview h6 { margin: 20px 0 10px 0; color: var(--accent-color); font-weight: 600; }
+        .preview h1 { font-size: 2em; border-bottom: 2px solid var(--accent-color); padding-bottom: 10px; }
+        .preview h2 { font-size: 1.5em; border-bottom: 1px solid var(--border-color); padding-bottom: 5px; }
+        .preview p { margin: 10px 0; line-height: 1.6; }
+        .preview a { color: var(--accent-color); text-decoration: none; border-bottom: 1px solid transparent; transition: all 0.2s ease; }
+        .preview a:hover { border-bottom-color: var(--accent-color); }
+        .preview code { background: var(--button-bg); padding: 2px 4px; border-radius: 3px; font-family: 'Menlo', 'Consolas', 'Courier New', monospace; font-size: 0.9em; }
+        .preview pre { background: var(--button-bg); padding: 15px; border-radius: 5px; overflow-x: auto; margin: 10px 0; border-left: 4px solid var(--accent-color); position: relative; }
+        .preview pre .copy-btn { position: absolute; top: 8px; right: 8px; background: var(--button-hover); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0; transition: opacity 0.2s ease; z-index: 1; }
+        .preview pre:hover .copy-btn { opacity: 1; }
+        .preview pre:hover .copy-btn:hover { background: var(--accent-color); color: white; }
+        .preview pre code.hljs { background: transparent; padding: 0; }
+        .preview mark { background-color: var(--mark-bg); padding: 1px 4px; border-radius: 3px; }
+        .preview blockquote { border-left: 4px solid var(--accent-color); margin: 10px 0; padding: 10px 20px; background: var(--button-bg); border-radius: 0 5px 5px 0; }
+        .preview ul, .preview ol { margin: 10px 0; padding-left: 30px; }
+        .preview li { margin: 5px 0; }
+        .preview table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+        .preview th, .preview td { border: 1px solid var(--border-color); padding: 8px 12px; text-align: left; }
+        .preview th { background: var(--button-bg); font-weight: 600; }
+        .preview img { max-width: 100%; height: auto; display: block; margin: 10px 0; }
+
+        /* --- 状态栏 --- */
+        .stats { padding: 8px 16px; background: var(--button-bg); border-top: 1px solid var(--border-color); font-size: 12px; color: var(--text-color); opacity: 0.8; display: flex; justify-content: space-between; flex-shrink: 0; }
+        
+        /* --- 特殊模块样式 --- */
+        .mermaid, .math-block { text-align: center; margin: 20px 0; }
+        .math-inline { display: inline; }
+        .render-error { border: 2px solid var(--error-border); padding: 10px; color: var(--error-text); background-color: var(--error-bg); border-radius: 4px; margin: 10px 0; }
+        .render-error pre { white-space: pre-wrap; color: var(--error-text); background: transparent; border: none; padding: 0; }
+
+        /* --- 页脚样式 --- */
+        footer {
+            padding: 15px; text-align: center; font-size: 14px;
+            color: var(--text-color); opacity: 0.6; flex-shrink: 0;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-color);
+        }
+        footer a {
+            color: var(--text-color);
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+
+        /* --- 移动端优化 --- */
+        @media (max-width: 768px) {
+            .toolbar { padding: 8px; gap: 4px; }
+            .toolbar-left, .toolbar-right { gap: 4px; }
+            .btn { width: 40px; height: 40px; font-size: 18px; }
+            .btn::after { display: none; }
+            .main-content { flex-direction: column; }
+            .editor-panel, .preview-panel { border-right: none; border-bottom: 1px solid var(--border-color); flex: 1; height: auto; }
+            .editor { font-size: 16px; }
+            .preview { padding: 15px; }
+            .stats { flex-wrap: wrap; gap: 8px; }
+            .find-replace-panel { width: auto; left: 10px; right: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button class="btn" onclick="undo()" aria-label="撤销 (Ctrl+Z)"><i class="fa-solid fa-rotate-left"></i></button>
+                <button class="btn" onclick="redo()" aria-label="重做 (Ctrl+Y)"><i class="fa-solid fa-rotate-right"></i></button>
+                <button class="btn" onclick="insertFormat('**', '**')" aria-label="加粗 (Ctrl+B)"><i class="fa-solid fa-bold"></i></button>
+                <button class="btn" onclick="insertFormat('*', '*')" aria-label="斜体 (Ctrl+I)"><i class="fa-solid fa-italic"></i></button>
+                <button class="btn" onclick="insertFormat('~~', '~~')" aria-label="删除线"><i class="fa-solid fa-strikethrough"></i></button>
+                <button class="btn" onclick="insertFormat('`', '`')" aria-label="行内代码"><i class="fa-solid fa-code"></i></button>
+                <button class="btn" onclick="insertFormat('==', '==')" aria-label="标记"><i class="fa-solid fa-highlighter"></i></button>
+                <button class="btn" onclick="insertFormat('\n```\n', '\n```\n')" aria-label="代码块"><i class="fa-solid fa-file-code"></i></button>
+                <button class="btn" onclick="insertFormat('\n- ', '')" aria-label="列表"><i class="fa-solid fa-list-ul"></i></button>
+                <button class="btn" onclick="insertFormat('\n> ', '')" aria-label="引用"><i class="fa-solid fa-quote-left"></i></button>
+                <button class="btn" onclick="insertFormat('\n## ', '')" aria-label="标题"><i class="fa-solid fa-heading"></i></button>
+                <button class="btn" onclick="insertFormat('[', '](url)')" aria-label="链接"><i class="fa-solid fa-link"></i></button>
+                <button class="btn" onclick="insertFormat('\n| 表头1 | 表头2 |\n|---|---|\n| 单元格1 | 单元格2 |\n', '')" aria-label="表格"><i class="fa-solid fa-table"></i></button>
+                <button class="btn" onclick="insertFormat('\n```mermaid\ngraph TD;\n    A-->B;\n```\n', '')" aria-label="Mermaid图表"><i class="fa-solid fa-diagram-project"></i></button>
+                <button class="btn" onclick="toggleFindReplace(true)" aria-label="查找和替换 (Ctrl+F)"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+            <div class="toolbar-right">
+                
+                <button class="btn" onclick="toggleView('editor')" aria-label="仅编辑"><i class="fa-solid fa-pen-to-square"></i></button>
+                <button class="btn" onclick="toggleView('preview')" aria-label="仅预览"><i class="fa-solid fa-eye"></i></button>
+                <button class="btn" onclick="toggleView('both')" aria-label="分栏"><i class="fa-solid fa-table-columns"></i></button>
+                <button class="btn" onclick="toggleTheme()" aria-label="切换主题"><i id="themeIcon" class="fa-solid fa-moon"></i></button>
+                <button class="btn" onclick="toggleFullscreen()" aria-label="全屏 (F11)"><i id="fullscreenIcon" class="fa-solid fa-expand"></i></button>
+                <button class="btn" onclick="exportMarkdown()" aria-label="导出MD"><i class="fa-solid fa-file-arrow-down"></i></button>
+                <button class="btn" onclick="exportPDF()" aria-label="导出PDF"><i class="fa-solid fa-file-pdf"></i></button>
+                <button class="btn danger" onclick="clearLocalStorage()" aria-label="清除本地缓存"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+        </div>
+        
+        <div class="main-content" id="mainContent">
+            <div class="editor-panel" id="editorPanel">
+                <textarea class="editor" id="editor" placeholder="在此输入Markdown内容..." spellcheck="false"></textarea>
+                <div class="find-replace-panel hidden" id="findReplacePanel">
+                    <button class="close-btn" onclick="toggleFindReplace(false)" aria-label="关闭">&times;</button>
+                    <div>
+                        <input type="text" id="findInput" placeholder="查找...">
+                        <button onclick="findNext()">下一个</button>
+                    </div>
+                    <div>
+                        <input type="text" id="replaceInput" placeholder="替换为...">
+                        <button onclick="replaceNext()">替换</button>
+                        <button onclick="replaceAll()">全部</button>
+                    </div>
+                </div>
+            </div>
+            <div class="preview-panel" id="previewPanel">
+                <div class="preview" id="preview"></div>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <span>编辑器: <span id="editorChars">0</span> 字符</span>
+            <span>预览: <span id="previewWords">0</span> 字</span>
+            <span id="currentTime"></span>
+        </div>
+    </div>
+    
+    <footer>
+        <p>&copy; 2010-2025 锐道咨询  | <a href="https://beian.miit.gov.cn/" target="_blank">沪ICP备11000302号</a></p>
+    </footer>
+
+    <script>
+        (function() {
+            // --- DOM 元素缓存 ---
+            const dom = {
+                editor: document.getElementById('editor'),
+                preview: document.getElementById('preview'),
+                editorPanel: document.getElementById('editorPanel'),
+                previewPanel: document.getElementById('previewPanel'),
+                themeIcon: document.getElementById('themeIcon'),
+                fullscreenIcon: document.getElementById('fullscreenIcon'),
+                editorChars: document.getElementById('editorChars'),
+                previewWords: document.getElementById('previewWords'),
+                currentTime: document.getElementById('currentTime'),
+                hljsTheme: document.getElementById('hljs-theme'),
+                findReplacePanel: document.getElementById('findReplacePanel'),
+                findInput: document.getElementById('findInput'),
+                replaceInput: document.getElementById('replaceInput'),
+            };
+
+            // --- 应用状态 ---
+            const state = {
+                history: [], historyIndex: -1, isDark: false, isSyncing: false,
+                debounceTimer: null, currentView: 'both',
+                lastSearch: { query: '', index: -1 }
+            };
+
+            // --- 常量 ---
+            const DEBOUNCE_TIMEOUT = 250;
+            const HISTORY_LIMIT = 50;
+            const INITIAL_CONTENT = `# 欢迎使用 AI 驱动的 Markdown 编辑器
+
+## 🚀 AI 时代的 Markdown
+在生成式AI重塑创作方式的今天，Markdown正成为人机协作的最佳交互语言：
+- **AI原生格式**：ChatGPT等大模型原生支持Markdown输出
+- **模块化创作**：用Markdown组织思路，AI辅助填充内容细节
+- **双向增强**：AI生成的内容可直接导入编辑，修改后再次优化
+- **代码即文档**：开发者可在Markdown中嵌入可执行代码片段
+- **知识网络**：通过Markdown构建个人知识库，与AI形成知识闭环
+
+---
+
+## ✨ 功能亮点
+* **单文件HTML**: 只有一个简单HTML文件，即使断网也能随时使用。
+* **无任何广告**: 不会有任何广告干扰你的使用体验。
+* **智能同步滚动**: 编辑区与预览区无缝同步，让您的视线始终聚焦。
+* **实时预览**: \`marked.js\` 强力驱动，即时渲染您的每一处更改。
+* **代码高亮**: \`highlight.js\` 支持上百种语言，让您的代码块清晰易读。
+* **数学公式**: 支持 \`KaTeX\`，无论是行内公式 $E=mc^2$ 还是复杂的数学块，都能轻松搞定。
+* **流程图表**: 内置 \`Mermaid\` 支持，用简单的文本绘制复杂的图表。
+* **查找替换**: 强大的 \`Ctrl+F\` 功能，快速定位和修改内容。
+* **主题切换**: 内置明暗两种主题，并可根据系统时间自动切换，呵护您的双眼。
+* **本地存储**: 内容自动保存在浏览器中，刷新页面也不怕丢失。
+
+---
+
+## 🔥 为什么选择 Markdown
+在信息爆炸的时代，Markdown 凭借其极简语法和强大表现力，已成为全球创作者的首选写作语言：
+1. **专注内容**：纯文本格式让你摆脱排版干扰，专注于思想表达
+2. **终身保存**：没有版本兼容问题，10年后仍可轻松打开编辑
+3. **多平台发布**：一键导出HTML、PDF、Word等多种格式
+4. **开发者最爱**：GitHub、GitLab等代码平台原生支持
+5. **高效协作**：轻量化文件便于团队共享和版本控制
+
+---
+
+## markdown语法示例
+
+### 文本格式
+
+**这是加粗的文字**
+
+*这是斜体的文字*
+
+~~这是带删除线的文字~~
+
+==这是高亮标记的文字==
+
+> 这是一个引用块。
+> —— AI
+
+### 列表
+
+**无序列表**
+- 苹果
+- 香蕉
+  - 黄香蕉
+- 橙子
+
+**有序列表**
+1. 第一步
+2. 第二步
+3. 第三步
+
+**任务列表**
+- [x] 完成 关注锐道咨询公众号
+- [ ] 加入腾讯 ima 知识库 [银行业精品知识库](https://ima.qq.com/wiki/?shareId=ba3a965538b9456d653f5e6d2f25d5620bbab2a5637c68a62419ad65e172e1c4)
+
+### 代码块
+
+\`\`\`javascript
+// JavaScript 示例
+function hello(name) {
+  console.log(\`欢迎加入, \${name}!\`);
+}
+
+hello('银行人知识库');
+\`\`\`
+
+### 表格
+
+| 姓名   | 职业         | 贡献          |
+| ------ | ------------ | ------------- |
+| 小平 | 科技部 | 构建此编辑器  |
+| 锐道   | 创作者       | 赋予内容灵魂  |
+
+### 数学公式 (LaTeX)
+
+块级公式:
+$$
+\\int_a^b f(x)dx = F(b) - F(a)
+$$
+
+### 图表 (Mermaid)
+
+\`\`\`mermaid
+graph TD;
+    A[开始] --> B{检查需求};
+    B -->|需求明确| C[编写代码];
+    B -->|需求模糊| D[与用户沟通];
+    C --> E[完成功能];
+    D --> B;
+\`\`\`
+
+希望您享受这次由 AI 带来的书写体验！`;
+
+            // --- Marked.js 自定义 ---
+            function setupMarked() {
+                const renderer = new marked.Renderer();
+                renderer.image = (href, title, text) => {
+                    const match = href ? href.match(/^(.*?)\s*=(\d*)x?(\d*)$/) : null;
+                    let url = href, style = '';
+                    if (match) {
+                        url = match[1].trim();
+                        if (match[2]) style += `width: ${match[2]}px;`;
+                        if (match[3]) style += `height: ${match[3]}px;`;
+                    }
+                    return `<img src="${url}" alt="${text}" title="${title || ''}" style="${style}">`;
+                };
+                
+                // Bug 修复：移除了与 GFM 冲突的自定义 listitem 渲染器。
+                // marked.js 的 gfm:true 选项会自动处理任务列表。
+                
+                const markExtension = {
+                    name: 'mark', level: 'inline', start(src) { return src.indexOf('=='); },
+                    tokenizer(src) {
+                        const match = /^==([^=]+)==/.exec(src);
+                        if (match) return { type: 'mark', raw: match[0], text: this.lexer.inlineTokens(match[1].trim()) };
+                    },
+                    renderer(token) { return `<mark>${this.parser.parseInline(token.text)}</mark>`; }
+                };
+                marked.use({ renderer, extensions: [markExtension], gfm: true });
+            }
+
+            // --- 初始化 ---
+            function init() {
+                setupMarked();
+                setupEventListeners();
+                loadFromLocalStorage();
+                autoThemeSwitch();
+                updateAll();
+                updateTime();
+                toggleView(window.innerWidth <= 768 ? 'editor' : 'both');
+                saveToHistory(dom.editor.value);
+            }
+
+            function setupEventListeners() {
+                dom.editor.addEventListener('input', handleEditorInput);
+                dom.editor.addEventListener('keydown', handleShortcuts);
+                document.addEventListener('keydown', handleGlobalShortcuts);
+                dom.editor.addEventListener('scroll', handleScrollSync);
+                dom.previewPanel.addEventListener('scroll', handleScrollSync);
+                document.addEventListener('fullscreenchange', updateFullscreenIcon);
+                setInterval(updateTime, 1000);
+                setInterval(autoThemeSwitch, 60000);
+            }
+
+            // --- 核心更新与渲染 ---
+            function updateAll() {
+                const content = dom.editor.value;
+                dom.preview.innerHTML = marked.parse(processLatex(content));
+                processHighlighting();
+                processMermaid();
+                addCopyToCodeBlocks();
+                updateStats();
+            }
+
+            function processLatex(content) {
+                const render = (formula, displayMode) => {
+                    try { return katex.renderToString(formula.trim(), { displayMode, throwOnError: false }); } 
+                    catch (e) { return `<span class="render-error" title="${e.message}">LaTeX错误</span>`; }
+                };
+                let processed = content.replace(/\$\$([\s\S]*?)\$\$/g, (_, f) => `<div class="math-block">${render(f, true)}</div>`);
+                return processed.replace(/\$((?!\s)[\s\S]*?[^\s])\$/g, (m, f) => f.includes('$') ? m : `<span class="math-inline">${render(f, false)}</span>`);
+            }
+
+            function processHighlighting() { try { dom.preview.querySelectorAll('pre code:not(.language-mermaid)').forEach(hljs.highlightElement); } catch(e) { console.warn('Highlight.js 失败:', e); } }
+            
+            function processMermaid() {
+                try {
+                    mermaid.initialize({ startOnLoad: false, theme: state.isDark ? 'dark' : 'default', securityLevel: 'loose' });
+                    dom.preview.querySelectorAll('code.language-mermaid').forEach((block, index) => {
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'mermaid';
+                        wrapper.id = `mermaid-${Date.now()}-${index}`;
+                        wrapper.textContent = block.textContent;
+                        block.parentNode.parentNode.replaceChild(wrapper, block.parentNode);
+                        mermaid.run({ nodes: [wrapper] }).catch(err => {
+                            wrapper.innerHTML = `<div class="render-error"><strong>Mermaid渲染失败:</strong><br><pre>${err.message}</pre></div>`;
+                        });
+                    });
+                } catch (e) { console.warn('Mermaid 处理失败:', e); }
+            }
+
+            function addCopyToCodeBlocks() {
+                dom.preview.querySelectorAll('pre:not(:has(.copy-btn))').forEach(pre => {
+                    if (pre.querySelector('code.language-mermaid')) return;
+                    const button = document.createElement('button');
+                    button.className = 'copy-btn';
+                    button.textContent = 'Copy';
+                    button.setAttribute('aria-label', '复制到剪贴板');
+                    button.onclick = async () => {
+                        const code = pre.querySelector('code').innerText;
+                        try {
+                            await navigator.clipboard.writeText(code);
+                            button.textContent = 'Copied!';
+                        } catch (err) { button.textContent = 'Error'; }
+                        setTimeout(() => { button.textContent = 'Copy'; }, 2000);
+                    };
+                    pre.appendChild(button);
+                });
+            }
+
+            function updateStats() {
+                dom.editorChars.textContent = dom.editor.value.length;
+                const words = (dom.preview.innerText || '').match(/[\u4e00-\u9fa5]|[a-zA-Z0-9_]+/g) || [];
+                dom.previewWords.textContent = words.length;
+            }
+
+            function updateTime() { dom.currentTime.textContent = new Date().toLocaleTimeString('zh-CN'); }
+
+            // --- 事件处理器 ---
+            function handleEditorInput() {
+                clearTimeout(state.debounceTimer);
+                state.debounceTimer = setTimeout(() => {
+                    state.lastSearch.index = -1; // 文本已更改，重置搜索
+                    updateAll();
+                    saveToLocalStorage();
+                    saveToHistory(dom.editor.value);
+                }, DEBOUNCE_TIMEOUT);
+            }
+
+            function handleShortcuts(e) {
+                if (e.ctrlKey || e.metaKey) {
+                    let handled = true;
+                    switch (e.key.toLowerCase()) {
+                        case 'f': toggleFindReplace(true); break;
+                        case 'z': undo(); break;
+                        case 'y': redo(); break;
+                        case 'b': insertFormat('**', '**'); break;
+                        case 'i': insertFormat('*', '*'); break;
+                        default: handled = false;
+                    }
+                    if (handled) e.preventDefault();
+                }
+            }
+            
+            function handleGlobalShortcuts(e) { if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); } }
+
+            function handleScrollSync(e) {
+                if (state.isSyncing) return;
+                state.isSyncing = true;
+
+                const source = e.currentTarget;
+                const target = source === dom.editor ? dom.previewPanel : dom.editor;
+
+                if (source.scrollHeight <= source.clientHeight) {
+                    requestAnimationFrame(() => { state.isSyncing = false; });
+                    return;
+                }
+                const scrollRatio = source.scrollTop / (source.scrollHeight - source.clientHeight);
+                target.scrollTop = scrollRatio * (target.scrollHeight - target.clientHeight);
+                
+                requestAnimationFrame(() => { state.isSyncing = false; });
+            }
+
+            // --- 功能函数 ---
+            function saveToLocalStorage() { try { localStorage.setItem('markdownContent', dom.editor.value); } catch (e) { console.error("无法保存到本地存储:", e); } }
+            function loadFromLocalStorage() { dom.editor.value = localStorage.getItem('markdownContent') || INITIAL_CONTENT; }
+            function clearLocalStorage() {
+                if (confirm('您确定要清除本地缓存吗？此操作无法恢复。')) {
+                    localStorage.removeItem('markdownContent');
+                    dom.editor.value = '';
+                    updateAll();
+                    saveToHistory('');
+                }
+            }
+            function autoThemeSwitch() {
+                const hour = new Date().getHours();
+                if (document.body.classList.contains('dark') !== (hour >= 19 || hour < 6)) toggleTheme();
+            }
+
+            function saveToHistory(content) {
+                if (state.historyIndex < state.history.length - 1) state.history = state.history.slice(0, state.historyIndex + 1);
+                if (state.history[state.history.length - 1] !== content) {
+                    state.history.push(content);
+                    state.historyIndex++;
+                }
+                if (state.history.length > HISTORY_LIMIT) { state.history.shift(); state.historyIndex--; }
+            }
+            function undo() { if (state.historyIndex > 0) { state.historyIndex--; dom.editor.value = state.history[state.historyIndex]; updateAll(); } }
+            function redo() { if (state.historyIndex < state.history.length - 1) { state.historyIndex++; dom.editor.value = state.history[state.historyIndex]; updateAll(); } }
+
+            function insertFormat(before, after) {
+                const { scrollTop, selectionStart: start, selectionEnd: end } = dom.editor;
+                const selectedText = dom.editor.value.substring(start, end);
+                const newText = before + selectedText + after;
+                dom.editor.value = dom.editor.value.substring(0, start) + newText + dom.editor.value.substring(end);
+                dom.editor.focus();
+                const newPos = start + before.length;
+                dom.editor.setSelectionRange(newPos, newPos + selectedText.length);
+                dom.editor.scrollTop = scrollTop;
+                handleEditorInput();
+            }
+
+            function toggleView(view) {
+                state.currentView = view;
+                document.querySelectorAll('.toolbar-right .btn.active').forEach(b => b.classList.remove('active'));
+                const targetBtn = document.querySelector(`button[onclick="toggleView('${view}')"]`);
+                if (targetBtn) targetBtn.classList.add('active');
+                
+                const wasPreviewHidden = dom.previewPanel.classList.contains('hidden');
+                dom.editorPanel.classList.toggle('hidden', view === 'preview');
+                dom.previewPanel.classList.toggle('hidden', view === 'editor');
+                if (wasPreviewHidden && (view === 'preview' || view === 'both')) updateAll();
+            }
+
+            function toggleTheme() {
+                state.isDark = !state.isDark;
+                document.body.classList.toggle('dark', state.isDark);
+                dom.themeIcon.classList.toggle('fa-sun', state.isDark);
+                dom.themeIcon.classList.toggle('fa-moon', !state.isDark);
+                dom.themeIcon.parentNode.setAttribute('aria-label', state.isDark ? '明亮主题' : '暗黑主题');
+                dom.hljsTheme.href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-${state.isDark ? 'dark' : 'light'}.min.css`;
+                updateAll();
+            }
+
+            function toggleFullscreen() {
+                if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.error(`全屏失败: ${err.message}`));
+                else document.exitFullscreen();
+            }
+            function updateFullscreenIcon() {
+                const isFullscreen = !!document.fullscreenElement;
+                dom.fullscreenIcon.classList.toggle('fa-compress', isFullscreen);
+                dom.fullscreenIcon.classList.toggle('fa-expand', !isFullscreen);
+                dom.fullscreenIcon.parentNode.setAttribute('aria-label', isFullscreen ? '退出全屏' : '全屏 (F11)');
+            }
+
+            function exportMarkdown() {
+                const blob = new Blob([dom.editor.value], { type: 'text/markdown;charset=utf-8' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'document.md';
+                a.click();
+                URL.revokeObjectURL(a.href);
+            }
+            function exportPDF() {
+                const opt = { margin: 0.5, filename: 'document.pdf', image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2, useCORS: true }, jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' } };
+                const originalOverflow = dom.previewPanel.style.overflowY;
+                dom.previewPanel.style.overflowY = 'visible';
+                html2pdf().set(opt).from(dom.preview).save().then(() => { dom.previewPanel.style.overflowY = originalOverflow; }).catch(err => { console.error("PDF导出失败:", err); dom.previewPanel.style.overflowY = originalOverflow; });
+            }
+
+            // --- 新增：查找与替换功能 ---
+            function toggleFindReplace(show) {
+                dom.findReplacePanel.classList.toggle('hidden', !show);
+                if (show) {
+                    dom.findInput.focus();
+                    dom.findInput.select();
+                }
+            }
+
+            function findNext() {
+                const query = dom.findInput.value;
+                if (!query) return;
+
+                const text = dom.editor.value;
+                let startIndex = dom.editor.selectionEnd;
+                
+                if (state.lastSearch.query !== query || state.lastSearch.index === -1) {
+                    state.lastSearch.query = query;
+                } else {
+                    startIndex = state.lastSearch.index + 1;
+                }
+
+                let index = text.indexOf(query, startIndex);
+                if (index === -1) {
+                    index = text.indexOf(query, 0);
+                }
+
+                if (index > -1) {
+                    dom.editor.focus();
+                    dom.editor.setSelectionRange(index, index + query.length);
+                    state.lastSearch.index = index;
+                } else {
+                    state.lastSearch.index = -1;
+                    alert(`未找到 "${query}"`);
+                }
+            }
+
+            function replaceNext() {
+                const findQuery = dom.findInput.value;
+                const replaceQuery = dom.replaceInput.value;
+                if (!findQuery) return;
+
+                const { selectionStart, selectionEnd } = dom.editor;
+                const selectedText = dom.editor.value.substring(selectionStart, selectionEnd);
+
+                if (selectedText.toLowerCase() === findQuery.toLowerCase()) {
+                    const before = dom.editor.value.substring(0, selectionStart);
+                    const after = dom.editor.value.substring(selectionEnd);
+                    dom.editor.value = before + replaceQuery + after;
+                    
+                    dom.editor.selectionStart = selectionStart;
+                    dom.editor.selectionEnd = selectionStart + replaceQuery.length;
+                    handleEditorInput();
+                }
+                findNext();
+            }
+
+            function replaceAll() {
+                const findQuery = dom.findInput.value;
+                const replaceQuery = dom.replaceInput.value;
+                if (!findQuery) return;
+
+                const originalValue = dom.editor.value;
+                const newValue = originalValue.replaceAll(findQuery, replaceQuery);
+
+                if (originalValue !== newValue) {
+                    dom.editor.value = newValue;
+                    handleEditorInput();
+                }
+            }
+
+            // --- 将函数暴露到全局作用域 ---
+            Object.assign(window, {
+                undo, redo, insertFormat, toggleView, toggleTheme, toggleFullscreen,
+                exportMarkdown, exportPDF, clearLocalStorage,
+                toggleFindReplace, findNext, replaceNext, replaceAll
+            });
+
+            // --- 启动应用 ---
+            document.addEventListener('DOMContentLoaded', init);
+        })();
+    </script>
+</body>
+</html>
